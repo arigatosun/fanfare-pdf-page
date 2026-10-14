@@ -45,7 +45,14 @@
   // リンクを開いただけでは決めない。メールのセキュリティ機能がリンクを先に開くことがあるため、決定ボタンで初めて決める。
   function call(action) {
     var body = { action: action, case: params.get('case') || '', c: params.get('c') || '', sig: params.get('sig') || '' };
-    return fetch(API, { method: 'POST', body: JSON.stringify(body), credentials: 'omit' })
+    // 通信が一時的に失敗することがある（2026-10-14 に「Failed to fetch」を確認）ので、2回までやり直す
+    var attempt = function (left) {
+      return fetch(API, { method: 'POST', body: JSON.stringify(body), credentials: 'omit' }).catch(function (err) {
+        if (left <= 0) throw new Error('通信に失敗しました。時間をおいてもう一度お試しください。');
+        return new Promise(function (r) { setTimeout(r, 2000); }).then(function () { return attempt(left - 1); });
+      });
+    };
+    return attempt(2)
       .then(function (res) { return res.json(); })
       .then(function (data) { if (data.error) throw new Error(data.error); return data; });
   }
