@@ -38,9 +38,10 @@
     <p id="msg" class="msg"></p>
   </div>
 </main>
+<!-- GAS の Web アプリ（poc/gas/PdfLink.js）の URL。環境ごとに deploy.js が書き出す -->
+<script src="api.js"></script>
 <script>
-  // GAS の Web アプリ（poc/gas/PdfLink.js）。Cookie を送らないので、複数アカウントでログインしていても URL が書き換わらない。
-  var API = 'https://script.google.com/macros/s/AKfycby47z1xlCO3APcY2k7xT_st7J8Ftg4_H-2fJLwDQYRTpZU506zwTpedlbohEbUVG8sm4g/exec';
+  // Cookie を送らないので、複数アカウントでログインしていても URL が書き換わらない。
   var params = new URLSearchParams(location.search);
   var DOC = params.get('doc') || '';
   var SIG = params.get('sig') || '';
