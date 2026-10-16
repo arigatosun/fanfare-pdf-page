@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>パスワード付きPDFを作る</title>
+  <style>
+    body { margin: 0; background: #f4f7fb; color: #1f2933; font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif; }
+    main { max-width: 480px; margin: 32px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    .doc { font-size: 14px; color: #52606d; margin: 0 0 20px; word-break: break-all; min-height: 1.5em; }
+    label { display: block; font-size: 14px; font-weight: bold; margin: 16px 0 6px; }
+    input { box-sizing: border-box; width: 100%; font-size: 16px; padding: 10px 12px; border: 1px solid #cbd2d9; border-radius: 8px; }
+    .hint { font-size: 13px; color: #52606d; margin: 6px 0 0; }
+    button { width: 100%; margin-top: 24px; padding: 12px; font-size: 16px; font-weight: bold; color: #fff; background: #1a73e8; border: 0; border-radius: 8px; }
+    button:disabled { background: #9aa5b1; }
+    .msg { margin-top: 16px; font-size: 14px; line-height: 1.6; }
+    .error { color: #c62828; }
+    .ok { color: #1b7f3b; }
+    [hidden] { display: none; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>パスワード付きPDFを作る</h1>
+    <p id="doc" class="doc">読み込んでいます…</p>
+    <form id="form" hidden>
+      <label for="pw">パスワード</label>
+      <input id="pw" type="password" autocomplete="new-password" required>
+      <label for="pw2">パスワード（確認のため、もう一度）</label>
+      <input id="pw2" type="password" autocomplete="new-password" required>
+      <p class="hint">半角の英数字と記号で、4〜32文字。日本語は使えません。</p>
+      <button id="go" type="submit">PDFを作ってダウンロード</button>
+    </form>
+    <p id="msg" class="msg"></p>
+  </div>
+</main>
+<!-- GAS の Web アプリ（poc/gas/PdfLink.js）の URL。環境ごとに deploy.js が書き出す -->
+<script src="api.js"></script>
+<script>
+  // Cookie を送らないので、複数アカウントでログインしていても URL が書き換わらない。
+  var params = new URLSearchParams(location.search);
+  var DOC = params.get('doc') || '';
+  var SIG = params.get('sig') || '';
+  var form = document.getElementById('form');
+  var msg = document.getElementById('msg');
+  var go = document.getElementById('go');
+  var docLabel = document.getElementById('doc');
+
+  function show(text, cls) { msg.textContent = text; msg.className = 'msg ' + (cls || ''); }
+
+  function call(body) {
+    body.doc = DOC;
+    body.sig = SIG;
+    // 通信が一時的に失敗することがある（2026-10-14 に「Failed to fetch」を確認）ので、2回までやり直す
+    var attempt = function (left) {
+      return fetch(API, { method: 'POST', body: JSON.stringify(body), credentials: 'omit' }).catch(function (err) {
+        if (left <= 0) throw new Error('通信に失敗しました。時間をおいてもう一度お試しください。');
+        return new Promise(function (r) { setTimeout(r, 2000); }).then(function () { return attempt(left - 1); });
+      });
+    };
+    return attempt(2)
+      .then(function (res) { return res.json(); })
+      .then(function (data) { if (data.error) throw new Error(data.error); return data; });
+  }
+
+  call({ action: 'pdf-info' })
+    .then(function (data) { docLabel.textContent = data.name; form.hidden = false; })
+    .catch(function (err) { docLabel.textContent = ''; show(err.message, 'error'); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var pw = document.getElementById('pw').value;
+    if (pw !== document.getElementById('pw2').value) return show('2つのパスワードが一致していません。', 'error');
+    if (!/^[!-~]{4,32}$/.test(pw)) return show('パスワードは半角の英数字と記号で、4〜32文字にしてください。', 'error');
+    go.disabled = true;
+    show('作成しています（10秒ほどかかります）…');
+    call({ action: 'pdf-make', password: pw })
+      .then(function (res) {
+        var bin = atob(res.base64);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        a.download = res.name;
+        document.body.appendChild(a);
+        a.click();
+        show('できました。「' + res.name + '」をダウンロードしました。相談者さまへのメールに添付し、パスワードは別のメールでお伝えください。', 'ok');
+      })
+      .catch(function (err) { show(err.message, 'error'); })
+      .then(function () { go.disabled = false; });
+  });
+</script>
+</body>
+</html>
